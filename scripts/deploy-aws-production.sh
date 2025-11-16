@@ -86,17 +86,14 @@ deploy_infrastructure() {
     echo -e "${YELLOW}Applying infrastructure...${NC}"
     terraform apply -auto-approve
     
-    # Get outputs
-    ALB_DNS=$(terraform output -raw alb_dns_name)
+    # Get outputs (ECR is from Terraform, ALB will be discovered from Ingress later)
     ECR_REPOSITORY_URL=$(terraform output -raw ecr_repository_url)
     
     echo -e "${GREEN}Infrastructure deployed successfully!${NC}"
-    echo -e "${BLUE}ALB DNS: ${ALB_DNS}${NC}"
     echo -e "${BLUE}ECR Repository: ${ECR_REPOSITORY_URL}${NC}"
     
     # Save outputs for next steps
-    echo "ALB_DNS=$ALB_DNS" > ../../../.aws-outputs
-    echo "ECR_REPOSITORY_URL=$ECR_REPOSITORY_URL" >> ../../../.aws-outputs
+    echo "ECR_REPOSITORY_URL=$ECR_REPOSITORY_URL" > ../../../.aws-outputs
     
     cd ../../..
 }
@@ -122,12 +119,13 @@ build_and_push_image() {
     
     # Tag image for ECR
     docker tag weather-bot:latest $ECR_REPOSITORY_URL:latest
-    docker tag weather-bot:latest $ECR_REPOSITORY_URL:$(date +%Y%m%d-%H%M%S)
+    IMAGE_TAG=$(date +%Y%m%d-%H%M%S)
+    docker tag weather-bot:latest $ECR_REPOSITORY_URL:$IMAGE_TAG
     
     # Push to ECR
     echo -e "${YELLOW}Pushing to ECR...${NC}"
     docker push $ECR_REPOSITORY_URL:latest
-    docker push $ECR_REPOSITORY_URL:$(date +%Y%m%d-%H%M%S)
+    docker push $ECR_REPOSITORY_URL:$IMAGE_TAG
     
     echo -e "${GREEN}Docker image pushed successfully!${NC}"
 }
@@ -153,8 +151,7 @@ deploy_to_eks() {
     helm repo add eks https://aws.github.io/eks-charts || true
     helm repo update
     
-    # Create namespace if it doesn't exist
-    kubectl create namespace weather-bot --dry-run=client -o yaml | kubectl apply -f -
+    # Let Helm manage the namespace; do not pre-create to avoid ownership conflicts
     
     # Get AWS account ID and region for IAM role
     AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -164,7 +161,7 @@ deploy_to_eks() {
     # Deploy the application using Helm
     echo -e "${YELLOW}Deploying Weather Bot with Helm...${NC}"
     helm upgrade --install weather-bot ./whatsapp-weather-bot-chart \
-        --namespace weather-bot \
+        --namespace weather-bot --create-namespace \
         --set image.repository=$ECR_REPOSITORY_URL \
         --set image.tag=latest \
         --set iam.roleArn=$IAM_ROLE_ARN \
@@ -179,15 +176,22 @@ deploy_to_eks() {
     
     # Get ingress URL
     echo -e "${YELLOW}Getting ALB URL...${NC}"
-    sleep 30  # Wait for ALB to be provisioned
-    ALB_URL=$(kubectl get ingress weather-bot-ingress -n weather-bot -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "ALB provisioning...")
-    
-    if [ "$ALB_URL" != "ALB provisioning..." ]; then
+    # Wait and poll up to ~5 minutes
+    for i in {1..30}; do
+        ALB_URL=$(kubectl get ingress weather-bot-ingress -n weather-bot -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+        if [ -n "$ALB_URL" ]; then
+            break
+        fi
+        echo "Waiting for ALB to be provisioned... ($i/30)"
+        sleep 10
+    done
+
+    if [ -n "$ALB_URL" ]; then
         echo -e "${GREEN}Application URL: http://$ALB_URL${NC}"
         echo "ALB_URL=$ALB_URL" >> .aws-outputs
     else
-        echo -e "${YELLOW}ALB is still provisioning. Check in a few minutes with:${NC}"
-        echo "kubectl get ingress weather-bot-ingress -n weather-bot"
+        echo -e "${YELLOW}ALB is still provisioning. Check later with:${NC}"
+        echo "kubectl get ingress weather-bot-ingress -n weather-bot -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
     fi
 }
 
@@ -195,10 +199,15 @@ deploy_to_eks() {
 configure_webhook() {
     echo -e "${BLUE}Webhook Configuration${NC}"
     
-    source .aws-outputs
-    
-    # Use ALB_URL if available, otherwise ALB_DNS
-    WEBHOOK_URL=${ALB_URL:-$ALB_DNS}
+    source .aws-outputs || true
+
+    # Prefer ALB_URL discovered from Ingress
+    WEBHOOK_URL="${ALB_URL:-}"
+    if [ -z "$WEBHOOK_URL" ]; then
+        echo -e "${YELLOW}ALB URL not yet available. Retrieve it with:${NC}"
+        echo "kubectl get ingress weather-bot-ingress -n weather-bot -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
+        WEBHOOK_URL="<ALB_HOSTNAME_PENDING>"
+    fi
     
     echo ""
     echo -e "${YELLOW}Manual Step Required:${NC}"
@@ -237,9 +246,10 @@ main() {
     echo -e "${GREEN}DEPLOYMENT COMPLETE!${NC}"
     echo ""
     echo -e "${BLUE}Your Weather Bot is now running in production:${NC}"
-    echo -e "${GREEN}Application URL: http://$(source .aws-outputs && echo $ALB_DNS)${NC}"
-    echo -e "${GREEN}Health Check: http://$(source .aws-outputs && echo $ALB_DNS)/health${NC}"
-    echo -e "${GREEN}Metrics: http://$(source .aws-outputs && echo $ALB_DNS)/metrics${NC}"
+    APP_HOST=$(source .aws-outputs 2>/dev/null && echo $ALB_URL)
+    echo -e "${GREEN}Application URL: http://$APP_HOST${NC}"
+    echo -e "${GREEN}Health Check: http://$APP_HOST/health${NC}"
+    echo -e "${GREEN}Metrics: http://$APP_HOST/metrics${NC}"
     echo ""
     echo -e "${YELLOW}Next Steps:${NC}"
     echo "1. Configure Twilio webhook (see instructions above)"

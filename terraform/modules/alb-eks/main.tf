@@ -67,7 +67,8 @@ data "aws_iam_policy_document" "aws_load_balancer_controller" {
     effect = "Allow"
     actions = [
       "ec2:AuthorizeSecurityGroupIngress",
-      "ec2:RevokeSecurityGroupIngress"
+      "ec2:RevokeSecurityGroupIngress",
+      "ec2:DeleteSecurityGroup"
     ]
     resources = ["*"]
   }

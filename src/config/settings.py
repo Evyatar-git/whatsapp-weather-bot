@@ -43,8 +43,14 @@ class Settings:
             self.twilio_whatsapp_from = os.getenv("TWILIO_WHATSAPP_FROM", "")
         
     def validate(self):
+        """
+        Validate non-fatal config invariants.
+        Note: Offline mode is supported when WEATHER_API_KEY is missing, so we do not raise.
+        Returns True if everything looks good; False if running in offline mode.
+        """
         if not self.weather_api_key:
-            raise ValueError("WEATHER_API_KEY environment variable is required")
+            # Deliberately allow offline mode; callers can decide how to proceed.
+            return False
         return True
 
 settings = Settings()

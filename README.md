@@ -12,6 +12,11 @@ A production-ready WhatsApp Weather Bot built with FastAPI featuring enterprise-
 - **Simplified Secrets**: Direct Parameter Store access via IRSA (no init containers)
 - **Improved Infrastructure**: Auto-deploying ALB Controller, better subnet tagging
 - **Code Quality**: Removed redundancies, cleaned up dependencies, consolidated logic
+- **New: Optional PVC for SQLite (Helm)**: Persistence is OFF by default; enable via `values.yaml` → `persistence.enabled=true`. When enabled, set `replicas: 1` (SQLite single-writer).
+- **Security Hardening**: Pod/container security contexts (non-root, fsGroup, read-only root FS, dropped capabilities).
+- **Webhook Rate Limiting**: In-app per-sender limiter (default: 5 requests / 60s) with Prometheus metric `webhook_rate_limited_total`.
+- **Resilience**: OpenWeather requests retry with exponential backoff on transient errors.
+- **Docker Healthcheck**: Uses curl against `/health` to reduce coupling to Python libs.
 
 ### Architecture:
 - **AWS EKS** with managed node groups (SPOT instances for cost optimization)
@@ -75,7 +80,7 @@ curl -X POST http://localhost:8000/weather -H "Content-Type: application/json" -
 
 Notes:
 - The compose file sets `API_HOST=0.0.0.0` and `API_PORT=8000` by default.
-- Healthcheck is enabled; container will report healthy when `/health` returns 200.
+- Healthcheck is enabled; container reports healthy when `/health` returns 200 (checked via curl).
 - Optional local conveniences (commented in `docker-compose.yml`):
   - Map `./.env.local` to `/app/.env` if you use a local env file
   - Mount `./src` for hot-reload during development
@@ -166,6 +171,15 @@ make aws-deploy-production # Deploy complete infrastructure
 make aws-destroy          # Destroy infrastructure (stop billing)
 ```
 
+### Secrets (IRSA) quick steps
+- Store secrets in SSM Parameter Store (SecureString), example:
+  - `weather-bot-openweather-key`, `weather-bot-account-sid`, `weather-bot-auth-token`, `weather-bot-whatsapp-from`
+- The app reads secrets via IRSA; ensure the app is deployed in namespace `weather-bot` with service account `weather-bot-sa`.
+- The service account must be annotated with the IAM role:
+  - `eks.amazonaws.com/role-arn: arn:aws:iam::<AWS_ACCOUNT_ID>:role/weather-bot-parameter-store-role`
+- After updating secrets/annotation, restart the deployment to pick up changes.
+  - `kubectl rollout restart deploy/weather-bot -n weather-bot`
+
 ### CI
 - GitHub Actions runs on every push/PR:
   - Install deps, run tests, ruff lint, and mypy type checks
@@ -245,6 +259,27 @@ Notes:
 - Logs are in CloudWatch `/aws/eks/weather-bot/cluster` and pod logs via kubectl.
 - SQLite data is ephemeral in pods; use RDS if persistence is required.
 
+### Troubleshooting
+- ALB not reachable yet: wait a few minutes for DNS to propagate; verify Ingress `ingressClassName: alb` and controller installed.
+- `/health` shows `"credentials_present": false`: check
+  - SSM parameter exists in the correct region
+  - App runs in namespace `weather-bot` and SA is annotated with the correct role ARN
+  - Pod has `AWS_REGION` set (Helm value `aws.region`)
+  - Restart the deployment after fixing the above
+
+### Persistence (Helm)
+
+Default: ephemeral storage via `emptyDir` (stateless, lowest cost).
+
+Optional: enable PVC-backed persistence for SQLite:
+- Set in `whatsapp-weather-bot-chart/values.yaml`:
+  - `persistence.enabled: true`
+  - `persistence.size: 1Gi` (as needed)
+  - `persistence.storageClass: ""` (empty → use cluster default)
+- Important: When enabling SQLite persistence, set `replicas: 1` (SQLite is single-writer).
+- Security: The pod runs as non-root and uses `fsGroup` so the mounted volume is writable without being world-writable.
+- Note: For production-grade state across multiple replicas, use a managed DB (e.g., Amazon RDS).
+
 ## Project Architecture
 
 ```
@@ -275,9 +310,23 @@ Notes:
 - **Container Hardening**: Multi-stage builds, non-root users, minimal attack surface
 - **Secrets Management**: AWS Parameter Store for production credentials
 - **Network Security**: VPC isolation, security groups, ALB with health checks
+- **Least-Privilege Runtime**: Pod/container security contexts
+  - Non-root user (`runAsNonRoot`, `runAsUser`)
+  - Group-owned writable volumes (`fsGroup`)
+  - Read-only root filesystem
+  - Linux capabilities dropped and privilege escalation disabled
 
 ## Monitoring & Observability
 - **Custom Metrics**: Weather requests by city, WhatsApp message types, database operations
 - **Grafana Dashboards**: Real-time visualization of application and business metrics
 - **Health Checks**: Application and infrastructure health monitoring
 - **Structured Logging**: JSON logs with correlation IDs and context
+- **Rate Limiting Metrics**: `webhook_rate_limited_total{sender}` – counts requests rejected by the app’s per-sender limiter.
+- **Access Control**: Expose `/metrics` only inside the cluster. If public access is required, protect with auth/allowlists.
+
+## Abuse protection
+
+- In-app per-sender rate limiting on `/webhook`:
+  - Default: 5 requests per 60 seconds per `From` number
+  - Exceeding the limit returns HTTP 429 with a short message
+  - Implementation is per-pod (in-memory). For strict global limits across replicas, use Redis or WAF.

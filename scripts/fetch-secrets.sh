@@ -27,11 +27,11 @@ fetch_secret() {
         --output text 2>/dev/null
 }
 
-# Fetch all required secrets
-WEATHER_API_KEY=$(fetch_secret "weather-api-key")
-TWILIO_ACCOUNT_SID=$(fetch_secret "twilio-account-sid")
-TWILIO_AUTH_TOKEN=$(fetch_secret "twilio-auth-token")
-TWILIO_WHATSAPP_FROM=$(fetch_secret "twilio-whatsapp-from")
+# Fetch all required secrets (match application parameter names)
+WEATHER_API_KEY=$(fetch_secret "openweather-key")
+TWILIO_ACCOUNT_SID=$(fetch_secret "account-sid")
+TWILIO_AUTH_TOKEN=$(fetch_secret "auth-token")
+TWILIO_WHATSAPP_FROM=$(fetch_secret "whatsapp-from")
 
 # Create Kubernetes Secret
 echo "Creating Kubernetes Secret..."

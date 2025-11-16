@@ -21,11 +21,22 @@ spec:
         {{ $key }}: {{ $value | quote }}
         {{- end }}
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 2000
+        fsGroup: 2000
+        fsGroupChangePolicy: OnRootMismatch
       serviceAccountName: {{ .Values.app.name }}-sa
       containers:
       - name: {{ .Values.app.name }}
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         ports:
         - containerPort: {{ .Values.service.targetPort }}
           name: http
@@ -40,7 +51,7 @@ spec:
           {{- toYaml .Values.resources | nindent 10 }}
         volumeMounts:
         - name: data-volume
-          mountPath: /app/data
+          mountPath: {{ .Values.persistence.mountPath | default "/app/data" }}
         {{- if .Values.healthcheck.liveness.enabled }}
         livenessProbe:
           httpGet:
@@ -59,4 +70,9 @@ spec:
         {{- end }}
       volumes:
       - name: data-volume
+        {{- if .Values.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ .Values.app.name }}-pvc
+        {{- else }}
         emptyDir: {}
+        {{- end }}

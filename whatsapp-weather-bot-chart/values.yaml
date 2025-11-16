@@ -31,6 +31,7 @@ resources:
 
 # Number of replicas
 replicas: 2  # Increased for HA
+# Set to 1 when persistence.enabled=true (SQLite single-writer)
 
 # Application configuration (non-sensitive)
 config:
@@ -83,3 +84,16 @@ labels:
   project: weather-bot
   environment: production
   managedBy: helm
+
+# Optional persistence for SQLite (disabled by default)
+persistence:
+  enabled: false
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  storageClass: ""  # leave empty to use cluster default
+  mountPath: /app/data
+
+# Documentation hint for SQLite usage with PVC
+sqlite:
+  singleReplicaRequired: true

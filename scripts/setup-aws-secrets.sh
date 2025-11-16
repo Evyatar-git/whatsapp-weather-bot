@@ -63,11 +63,11 @@ echo ""
 echo -e "${BLUE}Creating AWS Parameter Store secrets...${NC}"
 echo ""
 
-# Create all parameters
-create_parameter "/weather-bot-openweather-key" "$WEATHER_API_KEY" "OpenWeatherMap API key for weather data"
-create_parameter "/weather-bot-account-sid" "$TWILIO_ACCOUNT_SID" "Twilio Account SID for WhatsApp messaging" 
-create_parameter "/weather-bot-auth-token" "$TWILIO_AUTH_TOKEN" "Twilio Auth Token for WhatsApp messaging"
-create_parameter "/weather-bot-whatsapp-from" "$TWILIO_WHATSAPP_FROM" "Twilio WhatsApp From number"
+# Create all parameters (without leading slash to match application lookup: weather-bot-<name>)
+create_parameter "weather-bot-openweather-key" "$WEATHER_API_KEY" "OpenWeatherMap API key for weather data"
+create_parameter "weather-bot-account-sid" "$TWILIO_ACCOUNT_SID" "Twilio Account SID for WhatsApp messaging" 
+create_parameter "weather-bot-auth-token" "$TWILIO_AUTH_TOKEN" "Twilio Auth Token for WhatsApp messaging"
+create_parameter "weather-bot-whatsapp-from" "$TWILIO_WHATSAPP_FROM" "Twilio WhatsApp From number"
 
 echo ""
 echo -e "${GREEN}All secrets stored successfully in AWS Parameter Store!${NC}"

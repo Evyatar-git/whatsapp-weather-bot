@@ -8,6 +8,8 @@ from src.database import get_db, WeatherData
 from src.models.schemas import WeatherResponse
 from sqlalchemy.orm import Session
 import logging
+import time
+from http import HTTPStatus
 
 logger = setup_logging()
 
@@ -41,41 +43,66 @@ class WeatherService:
     
     def _fetch_weather_from_api(self, city: str, country: str) -> Dict:
         """Fetch weather data from OpenWeatherMap API."""
-        try:
-            url = f"{self.base_url}/weather"
-            params = {
-                "q": city if country is None else f"{city},{country}",
-                "appid": self.api_key,
-                "units": "metric"
-            }
-            
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            
-            data = response.json()
-            
-            weather_data = {
-                "city": data["name"],
-                "temperature": data["main"]["temp"],
-                "description": data["weather"][0]["description"],
-                "humidity": data["main"]["humidity"],
-                "feels_like": data["main"]["feels_like"],
-                "timestamp": datetime.fromtimestamp(data["dt"])
-            }
-            
-            logger.info(f"Weather data fetched successfully for {weather_data['city']}, temperature: {weather_data['temperature']}°C")
-            
-            return {
-                "status": "success",
-                "data": weather_data
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to fetch weather data for {city}: {str(e)}")
-            return {
-                "status": "error",
-                "error": str(e)
-            }
+        url = f"{self.base_url}/weather"
+        params = {
+            "q": city if country is None else f"{city},{country}",
+            "appid": self.api_key,
+            "units": "metric"
+        }
+
+        # Simple retry with exponential backoff on transient failures
+        max_attempts = 3
+        backoff_base_seconds = 0.5
+
+        last_error: Optional[str] = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = requests.get(url, params=params, timeout=10)
+
+                # Retry on 5xx codes; treat 4xx as final except 429
+                if response.status_code >= 500 or response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+                    raise requests.HTTPError(f"HTTP {response.status_code}: {response.text}", response=response)
+
+                response.raise_for_status()
+
+                data = response.json()
+                weather_data = {
+                    "city": data["name"],
+                    "temperature": data["main"]["temp"],
+                    "description": data["weather"][0]["description"],
+                    "humidity": data["main"]["humidity"],
+                    "feels_like": data["main"]["feels_like"],
+                    "timestamp": datetime.fromtimestamp(data["dt"])
+                }
+
+                logger.info(f"Weather data fetched successfully for {weather_data['city']}, temperature: {weather_data['temperature']}°C")
+                return {
+                    "status": "success",
+                    "data": weather_data
+                }
+
+            except (requests.Timeout, requests.ConnectionError) as e:
+                last_error = f"Network error: {str(e)}"
+                logger.warning(f"Transient network error fetching weather for {city} (attempt {attempt}/{max_attempts}): {e}")
+            except requests.HTTPError as e:
+                status = getattr(e.response, "status_code", None)
+                last_error = f"HTTP error {status}: {str(e)}"
+                if status and (500 <= status < 600 or status == HTTPStatus.TOO_MANY_REQUESTS):
+                    logger.warning(f"Transient HTTP error fetching weather for {city} (attempt {attempt}/{max_attempts}): {e}")
+                else:
+                    logger.error(f"Non-retryable HTTP error fetching weather for {city}: {e}")
+                    return {"status": "error", "error": last_error}
+            except Exception as e:
+                last_error = f"Unexpected error: {str(e)}"
+                logger.error(f"Unexpected error fetching weather for {city}: {e}")
+                break
+
+            if attempt < max_attempts:
+                sleep_seconds = backoff_base_seconds * (2 ** (attempt - 1))
+                time.sleep(sleep_seconds)
+
+        logger.error(f"Failed to fetch weather data for {city} after {max_attempts} attempts: {last_error}")
+        return {"status": "error", "error": last_error or "Unknown error"}
     
     def _get_test_weather(self, city: str, country: str) -> Dict:
         """Return test weather data when API key is not available."""

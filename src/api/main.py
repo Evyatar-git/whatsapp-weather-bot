@@ -12,6 +12,8 @@ from twilio.request_validator import RequestValidator
 import html
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
+from collections import defaultdict
+import time
 
 # Setup logging
 logger = setup_logging()
@@ -45,6 +47,12 @@ whatsapp_messages_total = Counter(
     ['message_type']
 )
 
+webhook_rate_limited_total = Counter(
+    'webhook_rate_limited_total',
+    'Total webhook requests rate-limited',
+    ['sender']
+)
+
 database_operations_duration = Histogram(
     'database_operations_duration_seconds',
     'Database operation duration',
@@ -67,6 +75,24 @@ if account_sid and auth_token:
         logger.error(f"Failed to initialize Twilio client: {str(e)}")
 else:
     logger.warning("Twilio credentials not found, running in test mode")
+
+RATE_LIMIT_WINDOW_SECONDS = 60
+RATE_LIMIT_MAX_REQUESTS = 5
+_request_times = defaultdict(list)
+
+def is_rate_limited(sender: str) -> bool:
+    now = time.time()
+    window_start = now - RATE_LIMIT_WINDOW_SECONDS
+    times = _request_times[sender]
+
+    while times and times[0] < window_start:
+        times.pop(0)
+
+    if len(times) >= RATE_LIMIT_MAX_REQUESTS:
+        return True
+
+    times.append(now)
+    return False
 
 def send_message(to_number: str, message: str):
     logger.info(f"Sending message to {to_number}, length: {len(message)}")
@@ -259,6 +285,12 @@ async def get_weather(request: WeatherRequest, db: Session = Depends(get_db)):
 async def webhook(request: Request, From: str = Form(...), Body: str = Form(...)):
     logger.info(f"Webhook received from {From}, body length: {len(Body)}")
     try:
+        # Rate limiting per sender
+        if is_rate_limited(From):
+            webhook_rate_limited_total.labels(sender=From).inc()
+            logger.warning(f"Rate limit exceeded for sender {From}")
+            return Response(status_code=429, content="Too many requests, please try again later.")
+
         # Validate Twilio signature when credentials are configured
         if auth_token:
             try:
