@@ -4,36 +4,48 @@ from datetime import datetime, timezone
 import logging
 import os
 from pathlib import Path
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
 class Base(DeclarativeBase):
     pass
 
-def get_database_url():
-    """Get database URL with proper path handling for containers."""
-    db_url = os.getenv("DATABASE_URL", "sqlite:///./weather_bot.db")
-    
-    # If it's a SQLite URL, ensure the directory exists and is writable
+def _prepare_sqlite_path(db_url: str) -> str:
+    """Prepare SQLite database path for container compatibility."""
     if db_url.startswith("sqlite:///"):
         db_path = db_url.replace("sqlite:///", "")
         
-        # Handle relative paths - create directory if needed
         if not os.path.isabs(db_path):
             db_dir = Path(db_path).parent
             db_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Created database directory: {db_dir}")
-        
-        # Use absolute path for better container compatibility
-        if not os.path.isabs(db_path):
+            
             db_path = os.path.abspath(db_path)
             db_url = f"sqlite:///{db_path}"
             logger.info(f"Using absolute database path: {db_path}")
     
     return db_url
 
-DATABASE_URL = get_database_url()
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+raw_database_url = settings.database_url
+if raw_database_url.startswith("sqlite:///"):
+    DATABASE_URL = _prepare_sqlite_path(raw_database_url)
+else:
+    DATABASE_URL = raw_database_url
+
+is_postgresql = DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://")
+
+if is_postgresql:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+        pool_recycle=3600
+    )
+else:
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class WeatherData(Base):
@@ -61,14 +73,21 @@ def get_db():
 def init_database():
     """Initialize database with proper error handling and migration support."""
     try:
-        # Create all tables
         Base.metadata.create_all(bind=engine)
         
-        # Verify database is working
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+            if is_postgresql:
+                result = conn.execute(text("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public'
+                """))
+            else:
+                result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+            
             tables = result.fetchall()
-            logger.info(f"Database initialized successfully with tables: {[t[0] for t in tables]}")
+            table_names = [t[0] for t in tables]
+            logger.info(f"Database initialized successfully with tables: {table_names}")
         
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")

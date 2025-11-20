@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2025-11-20
+
+### Added
+- **PostgreSQL (RDS) Support**
+  - Full RDS PostgreSQL integration with automatic SSL connections
+  - Automatic database detection (PostgreSQL in production, SQLite locally)
+  - Terraform RDS module with Parameter Store integration
+  - Database initialization on application startup
+
+- **Kubernetes Enhancements**
+  - Horizontal Pod Autoscaler (HPA) for automatic scaling
+  - Pod Disruption Budget (PDB) for high availability
+  - Minikube support for local Kubernetes development
+
+- **Script Organization**
+  - Organized scripts into logical categories (deployment, setup, testing, utils)
+  - Added comprehensive scripts documentation
+
+### Changed
+- **Database Configuration**
+  - Application automatically detects and uses PostgreSQL when available
+  - Improved database connection handling with connection pooling
+  - Enhanced error handling for database operations
+
+- **Project Structure**
+  - Reorganized scripts directory for better maintainability
+  - Removed redundant scripts (test-rds-migration.sh, monitor-rds.sh, init-database.py, test-hpa-pdb.sh)
+  - Updated all script references in documentation
+
+- **Documentation**
+  - Updated README with RDS/PostgreSQL information
+  - Added scripts/README.md for script organization
+  - Improved deployment documentation
+
+### Fixed
+- Fixed LOG_LEVEL in production values.yaml (DEBUG → INFO)
+- Fixed script path references after reorganization
+- Improved database initialization error handling
+
 ## [2.0.0] - 2025-09-17
 
 ### Added

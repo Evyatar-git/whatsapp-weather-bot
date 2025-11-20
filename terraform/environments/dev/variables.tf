@@ -68,8 +68,24 @@ variable "enable_container_insights" {
 variable "log_retention_days" {
   description = "CloudWatch log retention days"
   type        = number
-  default     = 7      # Reduced for cost savings
+  default     = 7
 }
 
-# Monitoring is handled via Helm charts in EKS, not Terraform modules
-# To deploy monitoring: helm install prometheus prometheus-community/kube-prometheus-stack
+variable "enable_rds" {
+  description = "Enable RDS PostgreSQL database"
+  type        = bool
+  default     = true
+}
+
+variable "rds_instance_class" {
+  description = "RDS instance class"
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "rds_master_password" {
+  description = "RDS master password"
+  type        = string
+  sensitive   = true
+  default     = ""
+}

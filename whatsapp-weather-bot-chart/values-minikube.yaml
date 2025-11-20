@@ -3,12 +3,12 @@ app:
   namespace: weather-bot
 
 image:
-  repository: ""
-  tag: "latest"
-  pullPolicy: Always
+  repository: weather-bot
+  tag: latest
+  pullPolicy: IfNotPresent
 
 service:
-  type: ClusterIP
+  type: NodePort
   port: 80
   targetPort: 8000
 
@@ -54,20 +54,10 @@ config:
   API_PORT: "8000"
   LOG_LEVEL: "INFO"
   ENABLE_METRICS: "true"
+  DATABASE_URL: "sqlite:///./data/weather_bot.db"
 
 ingress:
-  enabled: true
-  className: alb
-  annotations:
-    kubernetes.io/ingress.class: alb
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/healthcheck-path: /health
-  hosts:
-    - host: ""
-      paths:
-        - path: /
-          pathType: Prefix
+  enabled: false
 
 healthcheck:
   path: /health
@@ -77,7 +67,7 @@ healthcheck:
     periodSeconds: 10
   readiness:
     enabled: true
-    initialDelaySeconds: 20
+    initialDelaySeconds: 5
     periodSeconds: 5
 
 iam:
@@ -88,7 +78,7 @@ aws:
 
 labels:
   project: weather-bot
-  environment: production
+  environment: local
   managedBy: helm
 
 persistence:
@@ -101,3 +91,5 @@ persistence:
 
 sqlite:
   singleReplicaRequired: true
+
+

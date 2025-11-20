@@ -62,9 +62,24 @@ check_prerequisites() {
 
 # Deploy infrastructure
 deploy_infrastructure() {
-    echo -e "${BLUE}Deploying AWS infrastructure...${NC}"
+    echo -e "${BLUE}Checking AWS infrastructure...${NC}"
     
     cd terraform/environments/dev
+    
+    # Check if infrastructure already exists
+    if terraform output ecr_repository_url > /dev/null 2>&1; then
+        echo -e "${GREEN}Infrastructure already deployed!${NC}"
+        ECR_REPOSITORY_URL=$(terraform output -raw ecr_repository_url)
+        echo -e "${BLUE}ECR Repository: ${ECR_REPOSITORY_URL}${NC}"
+        
+        # Save outputs for next steps
+        echo "ECR_REPOSITORY_URL=$ECR_REPOSITORY_URL" > ../../../.aws-outputs
+        
+        cd ../../..
+        return 0
+    fi
+    
+    echo -e "${YELLOW}Infrastructure not found. Deploying...${NC}"
     
     # Initialize Terraform
     echo -e "${YELLOW}Initializing Terraform...${NC}"
@@ -109,9 +124,12 @@ build_and_push_image() {
     AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
     AWS_REGION=$(aws configure get region)
     
+    # Extract ECR base URL for login (remove repository name)
+    ECR_BASE_URL=$(echo $ECR_REPOSITORY_URL | sed 's|/.*||')
+    
     # Login to ECR
     echo -e "${YELLOW}Logging in to ECR...${NC}"
-    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_BASE_URL
     
     # Build image
     echo -e "${YELLOW}Building Docker image...${NC}"
@@ -225,10 +243,14 @@ main() {
     check_prerequisites
     
     echo -e "${YELLOW}Deployment Steps:${NC}"
-    echo "1. Deploy AWS infrastructure (VPC, EKS, ALB, ECR)"
-    echo "2. Build and push Docker image to ECR"  
-    echo "3. Deploy to EKS using Helm"
-    echo "4. Configure Twilio webhook"
+    echo "1. Set up secrets in Parameter Store (if not done)"
+    echo "2. Deploy AWS infrastructure (VPC, EKS, ALB, ECR) - SKIP if already done"
+    echo "3. Build and push Docker image to ECR"  
+    echo "4. Deploy to EKS using Helm"
+    echo "5. Configure Twilio webhook"
+    echo ""
+    echo -e "${YELLOW}IMPORTANT: Have you set up secrets in Parameter Store?${NC}"
+    echo "Run: ./scripts/setup/setup-aws-secrets.sh (if not done yet)"
     echo ""
     
     read -p "Ready to start deployment? (y/N): " ready

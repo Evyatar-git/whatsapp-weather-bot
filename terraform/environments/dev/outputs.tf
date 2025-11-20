@@ -32,3 +32,28 @@ output "ecr_repository_url" {
   description = "ECR repository URL for container images"
   value       = module.eks.ecr_repository_url
 }
+
+output "rds_endpoint" {
+  description = "RDS instance endpoint"
+  value       = var.enable_rds ? module.rds[0].db_instance_endpoint : null
+}
+
+output "rds_port" {
+  description = "RDS instance port"
+  value       = var.enable_rds ? module.rds[0].db_instance_port : null
+}
+
+output "rds_database_name" {
+  description = "RDS database name"
+  value       = var.enable_rds ? module.rds[0].db_instance_name : null
+}
+
+output "rds_ssm_parameters" {
+  description = "SSM Parameter Store paths for RDS configuration"
+  value       = var.enable_rds ? module.rds[0].ssm_parameter_paths : null
+}
+
+output "parameter_store_role_arn" {
+  description = "IAM role ARN for accessing Parameter Store via IRSA"
+  value       = module.eks.parameter_store_role_arn
+}

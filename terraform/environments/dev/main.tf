@@ -13,6 +13,10 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -79,8 +83,29 @@ module "alb_eks" {
   tags = local.common_tags
 }
 
-# Monitoring Module (Available but not deployed by default for cost savings)
-# To enable monitoring on EKS: Deploy Prometheus and Grafana using Helm charts
-# Example:
-# helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-# helm install prometheus prometheus-community/kube-prometheus-stack
+resource "random_password" "rds_password" {
+  count            = var.enable_rds && var.rds_master_password == "" ? 1 : 0
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+module "rds" {
+  count  = var.enable_rds ? 1 : 0
+  source = "../../modules/rds"
+
+  name                      = var.project_name
+  vpc_id                    = module.vpc.vpc_id
+  subnet_ids                = length(module.vpc.private_subnet_ids) > 0 ? module.vpc.private_subnet_ids : module.vpc.public_subnet_ids
+  allowed_security_group_ids = [
+    module.eks.node_group_security_group_id,
+    module.eks.cluster_security_group_id
+  ]
+  instance_class            = var.rds_instance_class
+  master_password           = var.rds_master_password != "" ? var.rds_master_password : random_password.rds_password[0].result
+  publicly_accessible       = length(module.vpc.private_subnet_ids) > 0 ? false : true
+  skip_final_snapshot       = true
+  deletion_protection       = false
+
+  tags = local.common_tags
+}

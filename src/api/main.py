@@ -18,10 +18,18 @@ import time
 # Setup logging
 logger = setup_logging()
 
-# Initialize database
-init_database()
-
 app = FastAPI(title="WhatsApp Weather Bot", version="1.0.0")
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on application startup."""
+    try:
+        logger.info("Initializing database on startup...")
+        init_database()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database on startup: {e}", exc_info=True)
+        logger.warning("Application will continue to start, but database operations may fail. Health check will report database status.")
 
 # Prometheus instrumentation
 instrumentator = Instrumentator(

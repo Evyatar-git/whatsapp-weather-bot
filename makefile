@@ -51,7 +51,7 @@ pre-commit-run:
 security-scan:
 	@echo "Running comprehensive security scan..."
 	@echo "This will scan for vulnerabilities in code, dependencies, and containers"
-	./scripts/security-scan.sh
+	./scripts/utils/security-scan.sh
 
 security-scan-quick:
 	@echo "Running quick security scan (dependencies only)..."
@@ -81,11 +81,11 @@ monitoring-logs:
 # Production AWS deployment commands
 aws-setup-secrets:
 	@echo "Setting up AWS secrets..."
-	./scripts/setup-aws-secrets.sh
+	./scripts/setup/setup-aws-secrets.sh
 
 aws-deploy-production:
 	@echo "Deploying to AWS production..."
-	./scripts/deploy-aws-production.sh
+	./scripts/deployment/deploy-aws-production.sh
 
 aws-destroy:
 	@echo "Destroying AWS infrastructure..."
@@ -112,10 +112,6 @@ aws-status:
 	cd terraform/environments/dev && terraform output
 
 # Database commands
-db-init:
-	@echo "Initializing database..."
-	python scripts/init-database.py
-
 db-test:
 	@echo "Testing database connection..."
 	python -c "from src.database import test_database_connection; print('Database connection:', test_database_connection())"
@@ -123,4 +119,4 @@ db-test:
 db-reset:
 	@echo "Resetting database (removing existing data)..."
 	rm -f weather_bot.db
-	python scripts/init-database.py
+	@echo "Note: Database is automatically initialized on application startup"

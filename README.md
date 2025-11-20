@@ -7,10 +7,13 @@ A production-ready WhatsApp Weather Bot built with FastAPI featuring enterprise-
 
 ### Major Improvements:
 - **Migrated to EKS**: Full Kubernetes deployment with AWS Load Balancer Controller
+- **PostgreSQL (RDS) Integration**: Full production database support with automatic SSL connections
+- **Automatic Database Detection**: Application automatically uses PostgreSQL when available, falls back to SQLite locally
 - **Fixed Critical Bug**: Resolved weather data access error in webhook processing
 - **Enhanced Security**: Added `force_delete` to ECR repositories for cleaner deployments
 - **Simplified Secrets**: Direct Parameter Store access via IRSA (no init containers)
 - **Improved Infrastructure**: Auto-deploying ALB Controller, better subnet tagging
+- **RDS Terraform Module**: Automated RDS provisioning with Parameter Store integration
 - **Code Quality**: Removed redundancies, cleaned up dependencies, consolidated logic
 - **New: Optional PVC for SQLite (Helm)**: Persistence is OFF by default; enable via `values.yaml` → `persistence.enabled=true`. When enabled, set `replicas: 1` (SQLite single-writer).
 - **Security Hardening**: Pod/container security contexts (non-root, fsGroup, read-only root FS, dropped capabilities).
@@ -22,21 +25,24 @@ A production-ready WhatsApp Weather Bot built with FastAPI featuring enterprise-
 - **AWS EKS** with managed node groups (SPOT instances for cost optimization)
 - **AWS Load Balancer Controller** automatically deployed via Terraform
 - **IRSA (IAM Roles for Service Accounts)** for secure Parameter Store access
-- **SQLite** with proper volume mounts for container compatibility
+- **PostgreSQL (RDS)** for production database with automatic SSL connections
+- **SQLite** fallback for local development
 - **Helm charts** for application deployment and management
 
 ## What it does
 - Accepts a city name over WhatsApp and replies with: city, temperature, description, humidity, feels_like, created_at
-- Stores weather lookups in SQLite for persistence
+- Stores weather lookups in PostgreSQL (RDS) for production or SQLite for local development
+- Automatically detects and uses PostgreSQL when available via Parameter Store
 - Supports offline mode when no OpenWeather API key is provided
 
 ## Tech Stack
 - **FastAPI** (Python 3.11) with Prometheus metrics
 - **Twilio WhatsApp API** for messaging
-- **SQLite + SQLAlchemy 2.0** for persistence
+- **PostgreSQL (RDS)** for production database with SSL
+- **SQLite + SQLAlchemy 2.0** for local development
 - **Pydantic** models with validation
 - **Docker** multi-stage builds with security hardening
-- **Terraform** (custom AWS modules for VPC, EKS, ALB)
+- **Terraform** (custom AWS modules for VPC, EKS, ALB, RDS)
 - **Kubernetes (EKS)** with Helm charts for deployment
 - **Prometheus + Grafana** for monitoring and observability
 - **Automated security scanning** (Trivy, Bandit, Safety)
@@ -66,8 +72,14 @@ Environment variables (via Docker Compose or AWS Parameter Store):
 - `WEATHER_API_KEY` (required for live weather data; otherwise offline mode)
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (for outbound messages)
 - `API_HOST` (default `0.0.0.0`), `API_PORT` (default `8000`), `LOG_LEVEL` (default `INFO`)
+- `DATABASE_URL` (optional; if not set, uses SQLite locally or PostgreSQL from Parameter Store in AWS)
 
-AWS Parameter Store is used for secure credential management in production. Do not commit real secrets.
+**Database Configuration:**
+- **Local Development**: Uses SQLite (`sqlite:///./weather_bot.db`) by default
+- **AWS Production**: Automatically uses PostgreSQL (RDS) when database parameters are found in Parameter Store
+- **Manual Override**: Set `DATABASE_URL` environment variable to override automatic detection
+
+AWS Parameter Store is used for secure credential management in production. Database credentials are automatically stored by Terraform when RDS is enabled. Do not commit real secrets.
 
 ## Run locally (Docker Compose)
 ```bash
@@ -172,8 +184,10 @@ make aws-destroy          # Destroy infrastructure (stop billing)
 ```
 
 ### Secrets (IRSA) quick steps
-- Store secrets in SSM Parameter Store (SecureString), example:
+- **Application Secrets**: Store in SSM Parameter Store (SecureString), example:
   - `weather-bot-openweather-key`, `weather-bot-account-sid`, `weather-bot-auth-token`, `weather-bot-whatsapp-from`
+- **Database Secrets**: Automatically created by Terraform when RDS is enabled:
+  - `/weather-bot/database/host`, `/weather-bot/database/port`, `/weather-bot/database/name`, `/weather-bot/database/username`, `/weather-bot/database/password`
 - The app reads secrets via IRSA; ensure the app is deployed in namespace `weather-bot` with service account `weather-bot-sa`.
 - The service account must be annotated with the IAM role:
   - `eks.amazonaws.com/role-arn: arn:aws:iam::<AWS_ACCOUNT_ID>:role/weather-bot-parameter-store-role`
@@ -190,21 +204,28 @@ Automated deployment with Kubernetes and cost management:
 
 ### Quick Deploy:
 ```bash
-# 1. Store secrets in AWS Parameter Store
-./scripts/setup-aws-secrets.sh
+# 1. Store application secrets in AWS Parameter Store
+./scripts/setup/setup-aws-secrets.sh
 
-# 2. Deploy complete infrastructure + application to EKS
-./scripts/deploy-aws-production.sh
+# 2. Deploy complete infrastructure (VPC, EKS, ALB, ECR, RDS) + application to EKS
+./scripts/deployment/deploy-aws-production.sh
+# Note: RDS PostgreSQL is enabled by default. Terraform automatically creates database
+# parameters in Parameter Store. The application will automatically use PostgreSQL.
 
-# 3. Configure Twilio webhook with provided ALB URL
-# 4. Test WhatsApp integration
+# 3. (Optional) If RDS was created separately, set up database parameters:
+# python scripts/setup/setup-rds-parameters.py
+
+# 4. Configure Twilio webhook with provided ALB URL
+# 5. Test WhatsApp integration
 ```
 
 ### Alternative Manual Steps:
 ```bash
-# 1. Deploy infrastructure
+# 1. Deploy infrastructure (includes RDS PostgreSQL by default)
 cd terraform/environments/dev
 terraform init && terraform apply
+# RDS is enabled by default (var.enable_rds = true)
+# Terraform automatically creates database parameters in Parameter Store
 
 # 2. Build and push Docker image
 docker build -t weather-bot .
@@ -215,10 +236,12 @@ docker push <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/weather-bot:late
 # 3. Deploy application with Helm
 helm upgrade --install weather-bot ./whatsapp-weather-bot-chart \
     --namespace weather-bot \
+    --create-namespace \
     --set image.repository=<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/weather-bot \
     --set image.tag=latest \
     --set iam.roleArn=arn:aws:iam::<AWS_ACCOUNT_ID>:role/weather-bot-parameter-store-role \
     --set aws.region=<AWS_REGION>
+# Application will automatically detect and use PostgreSQL from Parameter Store
 ```
 
 ### Cost Management:
@@ -236,7 +259,8 @@ aws ecr delete-repository --repository-name weather-bot-init --force
 - **EKS cluster**: ~$72/month (control plane)
 - **Worker nodes (2x t3.small SPOT)**: ~$15/month
 - **ALB**: ~$16/month
-- **Total**: ~$103/month
+- **RDS PostgreSQL (db.t3.micro)**: ~$15/month
+- **Total**: ~$118/month
 - **When destroyed**: $0/month
 
 ### EKS Management Commands:
@@ -257,7 +281,9 @@ kubectl scale deployment weather-bot -n weather-bot --replicas=3
 Notes:
 - Kubernetes pods read secrets from SSM via service accounts; redeploy to pick up changes.
 - Logs are in CloudWatch `/aws/eks/weather-bot/cluster` and pod logs via kubectl.
-- SQLite data is ephemeral in pods; use RDS if persistence is required.
+- **Database**: RDS PostgreSQL is enabled by default and automatically configured via Parameter Store.
+- Application automatically detects PostgreSQL when database parameters exist in Parameter Store.
+- To disable RDS: Set `enable_rds = false` in Terraform variables or use `terraform apply -var="enable_rds=false"`.
 
 ### Troubleshooting
 - ALB not reachable yet: wait a few minutes for DNS to propagate; verify Ingress `ingressClassName: alb` and controller installed.
@@ -266,19 +292,38 @@ Notes:
   - App runs in namespace `weather-bot` and SA is annotated with the correct role ARN
   - Pod has `AWS_REGION` set (Helm value `aws.region`)
   - Restart the deployment after fixing the above
+- `/health` shows `"database_connected": false`: check
+  - RDS instance is running (if enabled)
+  - Database parameters exist in Parameter Store (`/weather-bot/database/*`)
+  - Security groups allow EKS pods to reach RDS (configured automatically by Terraform)
+  - Application logs show database connection attempts
+  - Verify RDS endpoint: `terraform output rds_endpoint`
 
-### Persistence (Helm)
+### Database Configuration
 
-Default: ephemeral storage via `emptyDir` (stateless, lowest cost).
+**Production (AWS):**
+- **RDS PostgreSQL** is enabled by default via Terraform (`enable_rds = true`)
+- Database credentials are automatically stored in Parameter Store by Terraform
+- Application automatically detects and connects to PostgreSQL when parameters are available
+- Supports multiple replicas with shared database state
+- SSL connections are enforced (`sslmode=require`)
 
-Optional: enable PVC-backed persistence for SQLite:
-- Set in `whatsapp-weather-bot-chart/values.yaml`:
-  - `persistence.enabled: true`
-  - `persistence.size: 1Gi` (as needed)
-  - `persistence.storageClass: ""` (empty → use cluster default)
-- Important: When enabling SQLite persistence, set `replicas: 1` (SQLite is single-writer).
-- Security: The pod runs as non-root and uses `fsGroup` so the mounted volume is writable without being world-writable.
-- Note: For production-grade state across multiple replicas, use a managed DB (e.g., Amazon RDS).
+**Local Development:**
+- Uses **SQLite** by default (`sqlite:///./weather_bot.db`)
+- Optional: enable PVC-backed persistence for SQLite in Helm:
+  - Set in `whatsapp-weather-bot-chart/values.yaml`:
+    - `persistence.enabled: true`
+    - `persistence.size: 1Gi` (as needed)
+    - `persistence.storageClass: ""` (empty → use cluster default)
+  - Important: When enabling SQLite persistence, set `replicas: 1` (SQLite is single-writer)
+  - Security: The pod runs as non-root and uses `fsGroup` so the mounted volume is writable without being world-writable
+
+**Manual RDS Setup:**
+If RDS was created outside of Terraform or parameters need to be updated:
+```bash
+python scripts/setup/setup-rds-parameters.py
+```
+This script retrieves RDS details from Terraform or AWS and creates/updates Parameter Store entries.
 
 ## Project Architecture
 
@@ -290,10 +335,11 @@ Optional: enable PVC-backed persistence for SQLite:
 │   ├── models/                   # Pydantic request/response schemas
 │   └── services/                 # Business logic (weather API integration)
 ├── terraform/                    # Infrastructure as Code
-│   ├── modules/                  # Custom Terraform modules (VPC, EKS, ALB)
+│   ├── modules/                  # Custom Terraform modules (VPC, EKS, ALB, RDS)
 │   │   ├── vpc/                  # VPC with public/private subnets
 │   │   ├── eks/                  # EKS cluster with node groups
-│   │   └── alb-eks/              # ALB with AWS Load Balancer Controller
+│   │   ├── alb-eks/              # ALB with AWS Load Balancer Controller
+│   │   └── rds/                  # RDS PostgreSQL database module
 │   └── environments/dev/         # Environment-specific configurations
 ├── whatsapp-weather-bot-chart/   # Helm chart for Kubernetes deployment
 │   ├── templates/                # Kubernetes resource templates

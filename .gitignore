@@ -111,7 +111,8 @@ tmp/
 *.tfstate.backup
 *.tfvars
 !terraform.tfvars.example
-terraform.tfplan
+*.tfplan
+tfplan
 .terraform.tfstate.lock.info
 
 # AWS
@@ -164,3 +165,6 @@ scripts/init-database.py.log
 # Local deployment outputs
 deployment.log
 kubectl-output.log
+
+# Development guides and documentation
+docs/
