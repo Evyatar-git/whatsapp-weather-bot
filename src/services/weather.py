@@ -1,6 +1,6 @@
 import requests
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 from datetime import datetime
 from src.config.logging import setup_logging
 from src.config.settings import settings
@@ -23,17 +23,17 @@ class WeatherService:
         if not self.api_key or self.api_key == "your_openweathermap_api_key_here":
             logger.warning("Weather API key not found, running in test mode")
     
-    def get_current_weather(self, city: str = None, country: str = None, db: Session = None) -> Dict:
+    def get_current_weather(self, city: str | None = None, country: str | None = None, db: Session | None = None) -> Dict:
         """Get current weather for a city and store it in database."""
         city = city or self.default_city
-        country = country or None
+        country = country or self.default_country
         
         logger.info(f"Fetching weather data for {city}, {country}")
         
         if not self.api_key or self.api_key == "your_openweathermap_api_key_here":
-            weather_data = self._get_test_weather(city, country)
+            weather_data = self._get_test_weather(city, country or self.default_country)
         else:
-            weather_data = self._fetch_weather_from_api(city, country)
+            weather_data = self._fetch_weather_from_api(city, country or self.default_country)
         
         # Store in database if available
         if db and weather_data["status"] == "success":

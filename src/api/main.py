@@ -14,15 +14,15 @@ import html
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 from collections import defaultdict
+from typing import Dict, Any
 import time
 
 # Setup logging
 logger = setup_logging()
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> Any:
     """Application lifespan handler for startup and shutdown events."""
-    # Startup
     try:
         logger.info("Initializing database on startup...")
         init_database()
@@ -33,7 +33,6 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Shutdown (if needed in the future)
     logger.info("Application shutting down...")
 
 app = FastAPI(title="WhatsApp Weather Bot", version="1.0.0", lifespan=lifespan)
@@ -93,7 +92,7 @@ else:
 
 RATE_LIMIT_WINDOW_SECONDS = 60
 RATE_LIMIT_MAX_REQUESTS = 5
-_request_times = defaultdict(list)
+_request_times: Dict[str, list[float]] = defaultdict(list)
 
 def is_rate_limited(sender: str) -> bool:
     now = time.time()
@@ -135,7 +134,7 @@ def send_message(to_number: str, message: str):
                     error=str(e))
         return None
 
-def get_message_response(message_text: str, db: Session = None) -> tuple[str, str]:
+def get_message_response(message_text: str, db: Session | None = None) -> tuple[str, str]:
     """
     Process a message and return the response text and message type.
     Returns: (response_text, message_type)

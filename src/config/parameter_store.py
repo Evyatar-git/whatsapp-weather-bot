@@ -19,7 +19,8 @@ class ParameterStoreClient:
                 Name=full_name,
                 WithDecryption=with_decryption
             )
-            return response['Parameter']['Value']
+            value = response.get('Parameter', {}).get('Value')
+            return str(value) if value is not None else None
         except Exception as e:
             logger.error(f"Failed to get parameter {parameter_name}: {str(e)}")
             return None
@@ -35,7 +36,6 @@ class ParameterStoreClient:
             
             result = {}
             for param in response['Parameters']:
-                # Remove prefix to get original parameter name
                 original_name = param['Name'].replace(f"{self.prefix}-", "")
                 result[original_name] = param['Value']
             

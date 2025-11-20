@@ -43,7 +43,6 @@ class Settings:
                         
                         if all(k in db_config for k in ['host', 'port', 'name', 'username', 'password']):
                             logger.info("Using PostgreSQL database from Parameter Store")
-                            # RDS requires SSL connections
                             return f"postgresql://{db_config['username']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['name']}?sslmode=require"
                 except Exception as param_error:
                     logger.warning(f"Database parameters not found in Parameter Store: {param_error}")
@@ -83,11 +82,9 @@ class Settings:
     def validate(self):
         """
         Validate non-fatal config invariants.
-        Note: Offline mode is supported when WEATHER_API_KEY is missing, so we do not raise.
         Returns True if everything looks good; False if running in offline mode.
         """
         if not self.weather_api_key:
-            # Deliberately allow offline mode; callers can decide how to proceed.
             return False
         return True
 
