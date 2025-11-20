@@ -1,3 +1,3 @@
-from .schemas import WeatherRequest, WeatherResponse, ErrorResponse
+from .schemas import ErrorResponse, WeatherRequest, WeatherResponse
 
 __all__ = ["WeatherRequest", "WeatherResponse", "ErrorResponse"]

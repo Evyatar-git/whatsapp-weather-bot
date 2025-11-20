@@ -1,15 +1,15 @@
-import requests
 import os
-from typing import Dict, Optional, Union
+import time
 from datetime import datetime
+from http import HTTPStatus
+from typing import Dict, Optional
+
+import requests
+from sqlalchemy.orm import Session
+
 from src.config.logging import setup_logging
 from src.config.settings import settings
-from src.database import get_db, WeatherData
-from src.models.schemas import WeatherResponse
-from sqlalchemy.orm import Session
-import logging
-import time
-from http import HTTPStatus
+from src.database import WeatherData
 
 logger = setup_logging()
 
@@ -23,7 +23,12 @@ class WeatherService:
         if not self.api_key or self.api_key == "your_openweathermap_api_key_here":
             logger.warning("Weather API key not found, running in test mode")
     
-    def get_current_weather(self, city: str | None = None, country: str | None = None, db: Session | None = None) -> Dict:
+    def get_current_weather(
+        self,
+        city: str | None = None,
+        country: str | None = None,
+        db: Session | None = None
+    ) -> Dict:
         """Get current weather for a city and store it in database."""
         city = city or self.default_city
         country = country or self.default_country
@@ -60,8 +65,12 @@ class WeatherService:
                 response = requests.get(url, params=params, timeout=10)
 
                 # Retry on 5xx codes; treat 4xx as final except 429
-                if response.status_code >= 500 or response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
-                    raise requests.HTTPError(f"HTTP {response.status_code}: {response.text}", response=response)
+                status_code = response.status_code
+                if status_code >= 500 or status_code == HTTPStatus.TOO_MANY_REQUESTS:
+                    raise requests.HTTPError(
+                        f"HTTP {response.status_code}: {response.text}",
+                        response=response
+                    )
 
                 response.raise_for_status()
 
@@ -75,7 +84,10 @@ class WeatherService:
                     "timestamp": datetime.fromtimestamp(data["dt"])
                 }
 
-                logger.info(f"Weather data fetched successfully for {weather_data['city']}, temperature: {weather_data['temperature']}°C")
+                logger.info(
+                    f"Weather data fetched successfully for {weather_data['city']}, "
+                    f"temperature: {weather_data['temperature']}°C"
+                )
                 return {
                     "status": "success",
                     "data": weather_data
@@ -146,7 +158,10 @@ class WeatherService:
             db.add(db_weather)
             db.commit()
             
-            logger.info(f"Weather data stored in database for {weather_data['city']}, record ID: {db_weather.id}")
+            logger.info(
+                f"Weather data stored in database for {weather_data['city']}, "
+                f"record ID: {db_weather.id}"
+            )
             
         except Exception as e:
             logger.error(f"Failed to store weather data for {weather_data['city']}: {str(e)}")

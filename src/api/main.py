@@ -1,21 +1,22 @@
-from fastapi import FastAPI, Form, Response, Depends, HTTPException, Request
+import html
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import Any, Dict
+
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
+from prometheus_client import Counter, Histogram
+from prometheus_fastapi_instrumentator import Instrumentator
+from sqlalchemy.orm import Session
+from twilio.request_validator import RequestValidator
+from twilio.twiml.messaging_response import MessagingResponse
+
 from src.config.logging import setup_logging
 from src.config.settings import settings
 from src.database import get_db, init_database, test_database_connection
 from src.models.schemas import WeatherRequest, WeatherResponse
 from src.services.weather import WeatherService
-from sqlalchemy.orm import Session
-import logging
-from twilio.twiml.messaging_response import MessagingResponse
-from twilio.request_validator import RequestValidator
-import html
-from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import Counter, Histogram
-from collections import defaultdict
-from typing import Dict, Any
-import time
 
 # Setup logging
 logger = setup_logging()
@@ -29,7 +30,10 @@ async def lifespan(app: FastAPI) -> Any:
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize database on startup: {e}", exc_info=True)
-        logger.warning("Application will continue to start, but database operations may fail. Health check will report database status.")
+        logger.warning(
+            "Application will continue to start, but database operations may fail. "
+            "Health check will report database status."
+        )
     
     yield
     
@@ -284,7 +288,10 @@ async def get_weather(request: WeatherRequest, db: Session = Depends(get_db)):
             # Record failed weather request
             weather_requests_total.labels(city=request.city, status='error').inc()
             logger.error(f"Weather API failed for {request.city}: {result.get('error')}")
-            error_msg = f"Weather data not found for {request.city}: {result.get('error', 'Unknown error')}"
+            error_msg = (
+                f"Weather data not found for {request.city}: "
+                f"{result.get('error', 'Unknown error')}"
+            )
             raise HTTPException(status_code=400, detail=error_msg)
             
     except Exception as e:

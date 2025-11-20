@@ -1,8 +1,9 @@
+import requests
 from fastapi.testclient import TestClient
+
+from src.api import main as api_main
 from src.api.main import app
 from src.services import weather as weather_mod
-from src.api import main as api_main
-import requests
 
 client = TestClient(app)
 

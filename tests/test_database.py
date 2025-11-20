@@ -1,9 +1,11 @@
-import pytest
-import sys
 import os
+import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from src.database.config import get_db, WeatherData, init_database, test_database_connection as _test_db_conn
+from src.database.config import WeatherData, get_db, init_database
+from src.database.config import test_database_connection as _test_db_conn
+
 
 def test_database_connection():
     assert _test_db_conn() is True

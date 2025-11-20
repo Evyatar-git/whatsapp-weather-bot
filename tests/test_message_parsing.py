@@ -1,9 +1,8 @@
-from unittest.mock import Mock
 from datetime import datetime
-import pytest
+from unittest.mock import Mock
 
-from src.api.main import get_message_response
 from src.api import main as api_main
+from src.api.main import get_message_response
 
 
 def test_greeting_returns_menu(monkeypatch):

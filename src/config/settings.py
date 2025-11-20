@@ -1,6 +1,5 @@
-import os
 import logging
-from typing import Optional
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +38,13 @@ class Settings:
                     )
                     
                     if len(params['Parameters']) == 5:
-                        db_config = {p['Name'].split('/')[-1]: p['Value'] for p in params['Parameters']}
+                        db_config = {
+                            p['Name'].split('/')[-1]: p['Value']
+                            for p in params['Parameters']
+                        }
                         
-                        if all(k in db_config for k in ['host', 'port', 'name', 'username', 'password']):
+                        required_keys = ['host', 'port', 'name', 'username', 'password']
+                        if all(k in db_config for k in required_keys):
                             logger.info("Using PostgreSQL database from Parameter Store")
                             return (
                                 f"postgresql://{db_config['username']}:{db_config['password']}"
@@ -69,11 +72,19 @@ class Settings:
                     "whatsapp-from"
                 ])
                 
-                self.weather_api_key = secrets.get("openweather-key") or os.getenv("WEATHER_API_KEY", "")
-                self.twilio_account_sid = secrets.get("account-sid") or os.getenv("TWILIO_ACCOUNT_SID", "")
-                self.twilio_auth_token = secrets.get("auth-token") or os.getenv("TWILIO_AUTH_TOKEN", "")
-                self.twilio_whatsapp_from = secrets.get("whatsapp-from") or os.getenv("TWILIO_WHATSAPP_FROM", "")
-            except Exception as e:
+                self.weather_api_key = (
+                    secrets.get("openweather-key") or os.getenv("WEATHER_API_KEY", "")
+                )
+                self.twilio_account_sid = (
+                    secrets.get("account-sid") or os.getenv("TWILIO_ACCOUNT_SID", "")
+                )
+                self.twilio_auth_token = (
+                    secrets.get("auth-token") or os.getenv("TWILIO_AUTH_TOKEN", "")
+                )
+                self.twilio_whatsapp_from = (
+                    secrets.get("whatsapp-from") or os.getenv("TWILIO_WHATSAPP_FROM", "")
+                )
+            except Exception:
                 self.weather_api_key = os.getenv("WEATHER_API_KEY", "")
                 self.twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
                 self.twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")

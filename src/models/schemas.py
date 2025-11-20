@@ -1,6 +1,8 @@
-from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Optional
+
+from pydantic import BaseModel, Field, field_validator
+
 
 class WeatherRequest(BaseModel):
     city: str = Field(..., min_length=1, max_length=100, description="City name")

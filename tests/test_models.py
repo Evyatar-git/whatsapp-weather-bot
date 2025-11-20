@@ -1,10 +1,14 @@
-import pytest
-import sys
 import os
+import sys
+
+import pytest
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from src.models.schemas import WeatherRequest, WeatherResponse, ErrorResponse
 from datetime import datetime
+
+from src.models.schemas import ErrorResponse, WeatherRequest, WeatherResponse
+
 
 def test_weather_request_validation():
     # Valid request

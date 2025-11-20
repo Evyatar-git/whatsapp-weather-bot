@@ -1,12 +1,15 @@
-import os
 from fastapi.testclient import TestClient
-from src.api.main import app
 
+from src.api.main import app
 
 client = TestClient(app)
 
 
-def post_webhook(signature: str | None = None, sender: str = "whatsapp:+15555550123", body: str = "London"):
+def post_webhook(
+    signature: str | None = None,
+    sender: str = "whatsapp:+15555550123",
+    body: str = "London"
+):
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     if signature is not None:
         headers["X-Twilio-Signature"] = signature
