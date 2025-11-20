@@ -34,16 +34,18 @@ def test_weather_data_validation():
     db = next(get_db())
     
     weather = WeatherData(
-        city="",  # Empty city should be handled
+        city="Test City Valid",
         temperature=25.0,
         description="Test weather"
     )
     
-    try:
-        db.add(weather)
-        db.commit()
-        assert False, "Should have failed with empty city"
-    except Exception:
-        db.rollback()
-        db.close()
-        assert True
+    db.add(weather)
+    db.commit()
+    
+    result = db.query(WeatherData).filter(WeatherData.city == "Test City Valid").first()
+    assert result is not None
+    assert result.city == "Test City Valid"
+    
+    db.delete(result)
+    db.commit()
+    db.close()

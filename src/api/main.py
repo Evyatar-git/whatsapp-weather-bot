@@ -284,16 +284,13 @@ async def get_weather(request: WeatherRequest, db: Session = Depends(get_db)):
             # Record failed weather request
             weather_requests_total.labels(city=request.city, status='error').inc()
             logger.error(f"Weather API failed for {request.city}: {result.get('error')}")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Weather data not found for {request.city}: {result.get('error', 'Unknown error')}"
-            )
+            error_msg = f"Weather data not found for {request.city}: {result.get('error', 'Unknown error')}"
+            raise HTTPException(status_code=400, detail=error_msg)
             
     except Exception as e:
-        # Record failed weather request
         weather_requests_total.labels(city=request.city, status='exception').inc()
         logger.error(f"Weather API error for {request.city}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 @app.post("/webhook")
 async def webhook(request: Request, From: str = Form(...), Body: str = Form(...)):

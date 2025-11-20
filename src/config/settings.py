@@ -43,9 +43,14 @@ class Settings:
                         
                         if all(k in db_config for k in ['host', 'port', 'name', 'username', 'password']):
                             logger.info("Using PostgreSQL database from Parameter Store")
-                            return f"postgresql://{db_config['username']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['name']}?sslmode=require"
+                            return (
+                                f"postgresql://{db_config['username']}:{db_config['password']}"
+                                f"@{db_config['host']}:{db_config['port']}/{db_config['name']}?sslmode=require"
+                            )
                 except Exception as param_error:
-                    logger.warning(f"Database parameters not found in Parameter Store: {param_error}")
+                    logger.warning(
+                        f"Database parameters not found in Parameter Store: {param_error}"
+                    )
                     pass
             except Exception as e:
                 logger.warning(f"Parameter Store not available: {e}")
