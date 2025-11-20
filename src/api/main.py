@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Form, Response, Depends, HTTPException, Request
+from contextlib import asynccontextmanager
 from datetime import datetime
 from src.config.logging import setup_logging
 from src.config.settings import settings
@@ -18,11 +19,10 @@ import time
 # Setup logging
 logger = setup_logging()
 
-app = FastAPI(title="WhatsApp Weather Bot", version="1.0.0")
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database on application startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler for startup and shutdown events."""
+    # Startup
     try:
         logger.info("Initializing database on startup...")
         init_database()
@@ -30,6 +30,13 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize database on startup: {e}", exc_info=True)
         logger.warning("Application will continue to start, but database operations may fail. Health check will report database status.")
+    
+    yield
+    
+    # Shutdown (if needed in the future)
+    logger.info("Application shutting down...")
+
+app = FastAPI(title="WhatsApp Weather Bot", version="1.0.0", lifespan=lifespan)
 
 # Prometheus instrumentation
 instrumentator = Instrumentator(
