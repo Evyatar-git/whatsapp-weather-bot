@@ -4,10 +4,12 @@ RDS Database Parameters Setup Script
 Creates RDS connection parameters in AWS Parameter Store
 """
 
-import boto3
-import sys
 import getpass
+import sys
+
+import boto3
 from botocore.exceptions import ClientError
+
 
 # Colors for output
 class Colors:
@@ -22,11 +24,18 @@ def print_colored(message, color=Colors.NC):
 
 def get_rds_info():
     """Get RDS information from Terraform or AWS."""
-    import subprocess
     import os
+    import subprocess
     
     # Try to get from Terraform
-    terraform_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'terraform', 'environments', 'dev')
+    terraform_dir = os.path.join(
+        os.path.dirname(__file__),
+        '..',
+        '..',
+        'terraform',
+        'environments',
+        'dev'
+    )
     
     rds_info = {
         'host': None,
@@ -173,8 +182,18 @@ def main():
         ('/weather-bot/database/host', rds_info['host'], 'String', 'RDS PostgreSQL host endpoint'),
         ('/weather-bot/database/port', rds_info['port'], 'String', 'RDS PostgreSQL port'),
         ('/weather-bot/database/name', rds_info['name'], 'String', 'RDS PostgreSQL database name'),
-        ('/weather-bot/database/username', rds_info['username'], 'String', 'RDS PostgreSQL master username'),
-        ('/weather-bot/database/password', rds_info['password'], 'SecureString', 'RDS PostgreSQL master password'),
+        (
+            '/weather-bot/database/username',
+            rds_info['username'],
+            'String',
+            'RDS PostgreSQL master username'
+        ),
+        (
+            '/weather-bot/database/password',
+            rds_info['password'],
+            'SecureString',
+            'RDS PostgreSQL master password'
+        ),
     ]
     
     success_count = 0
@@ -190,13 +209,15 @@ def main():
         print_colored(f"  Port: {rds_info['port']}", Colors.NC)
         print_colored(f"  Database: {rds_info['name']}", Colors.NC)
         print_colored(f"  Username: {rds_info['username']}", Colors.NC)
-        print_colored(f"  Password: {'*' * len(rds_info['password'])} (stored securely)\n", Colors.GREEN)
+        password_mask = '*' * len(rds_info['password'])
+        print_colored(f"  Password: {password_mask} (stored securely)\n", Colors.GREEN)
         print_colored("Next steps:", Colors.BLUE)
         print_colored("1. Deploy application to EKS using Helm", Colors.NC)
         print_colored("2. Application will automatically retrieve these parameters", Colors.NC)
         print_colored("3. Verify database connection in application logs\n", Colors.NC)
     else:
-        print_colored(f"Warning: Only {success_count}/{len(params)} parameters were created", Colors.YELLOW)
+        warning_msg = f"Warning: Only {success_count}/{len(params)} parameters were created"
+        print_colored(warning_msg, Colors.YELLOW)
         sys.exit(1)
 
 if __name__ == '__main__':
